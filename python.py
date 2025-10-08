@@ -1,5 +1,3 @@
-# python.py
-
 import streamlit as st
 import pandas as pd
 from google import genai
@@ -53,7 +51,7 @@ def process_financial_data(df):
     
     return df
 
-# --- Hàm gọi API Gemini ---
+# --- Hàm gọi API Gemini (Dùng cho Phân tích Báo cáo) ---
 def get_ai_analysis(data_for_ai, api_key):
     """Gửi dữ liệu phân tích đến Gemini API và nhận nhận xét."""
     try:
@@ -183,3 +181,67 @@ if uploaded_file is not None:
 
 else:
     st.info("Vui lòng tải lên file Excel để bắt đầu phân tích.")
+
+# ==============================================================================
+# --- CHỨC NĂNG CHAT GEMINI MỚI ĐƯỢC THÊM VÀO ---
+# ==============================================================================
+
+def gemini_chat_interface():
+    """Tạo giao diện khung chat và quản lý hội thoại với Gemini."""
+    st.markdown("---")
+    st.subheader("🤖 Chat với Gemini về Tài chính (và mọi thứ khác!)")
+    
+    api_key = st.secrets.get("GEMINI_API_KEY")
+    if not api_key:
+        st.warning("Vui lòng cấu hình Khóa 'GEMINI_API_KEY' trong Streamlit Secrets để sử dụng tính năng Chat.")
+        return
+
+    # Khởi tạo Client và Chat Session
+    try:
+        client = genai.Client(api_key=api_key)
+        
+        if "chat_session" not in st.session_state:
+            # Khởi tạo đối tượng Chat với model và System Instruction để duy trì ngữ cảnh
+            st.session_state.chat_session = client.chats.create(
+                model="gemini-2.5-flash", 
+                system_instruction="Bạn là một trợ lý chatbot thân thiện và hữu ích, chuyên về phân tích tài chính và kinh doanh. Hãy trả lời các câu hỏi một cách rõ ràng và chính xác."
+            )
+            st.session_state.messages = []
+            
+    except Exception as e:
+        st.error(f"Lỗi khởi tạo Gemini Client/Chat: Vui lòng kiểm tra API Key. Chi tiết: {e}")
+        return
+
+    # Hiển thị tin nhắn cũ
+    for message in st.session_state.messages:
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
+
+    # Xử lý input mới
+    if prompt := st.chat_input("Hãy hỏi bất cứ điều gì về tài chính hoặc ứng dụng..."):
+        # Thêm tin nhắn người dùng vào lịch sử
+        st.session_state.messages.append({"role": "user", "content": prompt})
+        with st.chat_message("user"):
+            st.markdown(prompt)
+
+        # Gửi và nhận phản hồi
+        try:
+            with st.spinner("Gemini đang suy nghĩ..."):
+                # Dùng st.session_state.chat_session để gửi tin nhắn
+                response = st.session_state.chat_session.send_message(prompt)
+                full_response = response.text
+            
+            # Thêm tin nhắn Gemini vào lịch sử
+            st.session_state.messages.append({"role": "model", "content": full_response})
+            with st.chat_message("model"):
+                st.markdown(full_response)
+                
+        except APIError as e:
+            st.error(f"Lỗi gọi Gemini API (Chat): {e}")
+            st.session_state.messages.pop() # Xóa tin nhắn người dùng để thử lại
+        except Exception as e:
+            st.error(f"Đã xảy ra lỗi không xác định: {e}")
+            st.session_state.messages.pop() # Xóa tin nhắn người dùng để thử lại
+
+# Gọi hàm chat interface để hiển thị khung chat ở cuối ứng dụng
+gemini_chat_interface()
